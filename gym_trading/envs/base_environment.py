@@ -1,20 +1,21 @@
-from configurations import (
-    INDICATOR_WINDOW, INDICATOR_WINDOW_MAX, EMA_ALPHA, MARKET_ORDER_FEE
-)
-from indicators import IndicatorManager, RSI, TnS
-from gym_trading.utils.render_env import TradingGraph
-from gym_trading.utils.plot_history import Visualize
-from gym_trading.utils.statistics import ExperimentStatistics
-from gym_trading.utils.broker import Broker
-from gym_trading.utils.data_pipeline import DataPipeline
-import gym_trading.utils.reward as reward_types
-
-from gym import Env
 from abc import ABC, abstractmethod
 from collections import deque
-import pandas as pd
-import numpy as np
+from typing import Union
 
+import numpy as np
+import pandas as pd
+from gym import Env
+
+import gym_trading.utils.reward as reward_types
+from configurations import (
+    EMA_ALPHA, INDICATOR_WINDOW, INDICATOR_WINDOW_MAX, MARKET_ORDER_FEE,
+)
+from gym_trading.utils.broker import Broker
+from gym_trading.utils.data_pipeline import DataPipeline
+from gym_trading.utils.plot_history import Visualize
+from gym_trading.utils.render_env import TradingGraph
+from gym_trading.utils.statistic import ExperimentStatistics
+from indicators import IndicatorManager, RSI, TnS
 
 VALID_REWARD_TYPES = [f for f in dir(reward_types) if '__' not in f]
 
@@ -145,6 +146,10 @@ class BaseEnvironment(Env, ABC):
         self.notional_ask_index = features.index('asks_notional_0')
         self.buy_trade_index = features.index('buys')
         self.sell_trade_index = features.index('sells')
+
+        self.viz.observation_labels = self._normalized_data.columns.tolist()
+        self.viz.observation_labels += self.tns.get_labels() + self.rsi.get_labels()
+        self.viz.observation_labels += ['Inventory Count', 'Realized PNL', 'Unrealized PNL']
 
         # typecast all data sets to numpy
         self._raw_data = self._raw_data.to_numpy(dtype=np.float32)
@@ -512,10 +517,10 @@ class BaseEnvironment(Env, ABC):
         :param step_action: (int) current step action
         :return: (np.array) Current step observation
         """
+        step_environment_observation = self._normalized_data[self.local_step_number]
+        step_indicator_features = self._create_indicator_features()
         step_position_features = self._create_position_features()
         step_action_features = self._create_action_features(action=step_action)
-        step_indicator_features = self._create_indicator_features()
-        step_environment_observation = self._normalized_data[self.local_step_number]
         observation = np.concatenate((step_environment_observation,
                                       step_indicator_features,
                                       step_position_features,
@@ -548,16 +553,18 @@ class BaseEnvironment(Env, ABC):
         """
         return self.viz.to_df()
 
-    def plot_trade_history(self, save_filename: str or None = None) -> None:
+    def plot_trade_history(self, save_filename: Union[str, None] = None) -> None:
         """
         Plot history from back-test with trade executions, total inventory, and PnL.
 
         :param save_filename: filename for saving the image
         """
-        self.viz.plot(save_filename=save_filename)
+        self.viz.plot_episode_history(save_filename=save_filename)
 
-    def plot_observation_history(self) -> None:
+    def plot_observation_history(self, save_filename: Union[str, None] = None) -> None:
         """
         Plot observation space as an image.
+
+        :param save_filename: filename for saving the image
         """
-        return self.viz.plot_obs()
+        return self.viz.plot_obs(save_filename=save_filename)
